@@ -1,6 +1,9 @@
 PASOS PARA CORRER EL ESP32
 
-1. Cambia a tus valores MQTT de HiveMQ Cloud en la línea 66:
+1. En la linea 3 cambia lo siguiente (el 0 es para 1 plaza, el 1 es para 3 plazas):
+#define HARDWARE_COMPLETO 0  
+
+2. Cambia a tus valores MQTT de HiveMQ Cloud en la línea 66:
 
 // ============================================
 // MQTT HIVEMQ - CREDENCIALES DE RODRIGO
@@ -10,6 +13,6 @@ const int mqttPort = 8883;
 const char* mqttUser = "hivemq.webclient.1763931936305";
 const char* mqttPassword = "L;@15loW>:F9VT4hfHrv";
 
-2. Ejecuta el código en el ESP32 con el Arduino IDE
+3. Ejecuta el código en el ESP32 con el Arduino IDE
 
-3. De ser necesario, primero configura el WiFi
+4. De ser necesario, primero configura el WiFi
