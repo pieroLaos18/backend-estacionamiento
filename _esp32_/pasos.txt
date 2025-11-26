@@ -1,5 +1,7 @@
 PASOS PARA CORRER EL ESP32
 
+Entras a la carpeta _esp32_, abres la carpeta now_esp32 y abres el archivo now_esp32.ino
+
 1. En la linea 3 cambia lo siguiente (el 0 es para 1 plaza, el 1 es para 3 plazas):
 #define HARDWARE_COMPLETO 0  
 
