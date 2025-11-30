@@ -462,12 +462,14 @@ void loop() {
 
   // Plaza 2
   char msgPlaza2[128];
-  snprintf(msgPlaza2, sizeof(msgPlaza2), "{\"ocupado\":false,\"distancia\":200}");
+  snprintf(msgPlaza2, sizeof(msgPlaza2), "{\"ocupado\":%s,\"distancia\":%u}",
+           ocupado2 ? "true" : "false", distancia2);
   client.publish("estacionamiento/plaza2/estado", msgPlaza2);
 
   // Plaza 3
   char msgPlaza3[128];
-  snprintf(msgPlaza3, sizeof(msgPlaza3), "{\"ocupado\":false,\"distancia\":200}");
+  snprintf(msgPlaza3, sizeof(msgPlaza3), "{\"ocupado\":%s,\"distancia\":%u}",
+           ocupado3 ? "true" : "false", distancia3);
   client.publish("estacionamiento/plaza3/estado", msgPlaza3);
 
   // Log en Serial
