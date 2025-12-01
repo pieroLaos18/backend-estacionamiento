@@ -11,6 +11,37 @@ app.use(cors());
 app.use(express.json());
 
 // ==========================================
+// MQTT - Conexión con ESP32
+// ==========================================
+const mqtt = require("mqtt");
+
+// CAMBIA ESTO SEGÚN TU BROKER
+const MQTT_BROKER = "33602f86bce34f23b85e3669cc41f0a6.s1.eu.hivemq.cloud"; 
+// Si usas HiveMQ → mqtts://TU-URL
+
+const mqttClient = mqtt.connect(MQTT_BROKER);
+
+// Cuando se conecta
+mqttClient.on("connect", () => {
+    console.log("📡 Conectado al broker MQTT");
+
+    // Suscripciones desde ESP32
+    mqttClient.subscribe("estacionamiento/sensores");
+    mqttClient.subscribe("estacionamiento/estado");
+    mqttClient.subscribe("estacionamiento/entrada/ack");
+    mqttClient.subscribe("estacionamiento/salida/ack");
+});
+
+// Cuando llega un mensaje MQTT
+mqttClient.on("message", (topic, message) => {
+    const msg = message.toString();
+    console.log(`📥 MQTT [${topic}] → ${msg}`);
+
+    // Aquí puedes integrar sensores y actualizar BD si deseas
+});
+
+
+// ==========================================
 // RUTAS API
 // ==========================================
 
