@@ -124,18 +124,39 @@ app.post('/api/vehicles/entry', async (req, res) => {
 
 // Registrar salida (pago)
 app.post('/api/vehicles/exit', async (req, res) => {
-    const { plate, cost, totalTime } = req.body;
+    const { plate } = req.body;
     try {
-        // Obtener spot_id antes de completar la sesión
-        const [session] = await db.query('SELECT spot_id FROM parking_sessions WHERE plate = ? AND status = "active"', [plate]);
+        // Obtener sesión completa con tarifa guardada
+        const [session] = await db.query(`
+            SELECT spot_id, entry_time, rate_base_at_entry, rate_minute_at_entry 
+            FROM parking_sessions 
+            WHERE plate = ? AND status = "active"
+        `, [plate]);
 
         if (session.length === 0) {
             return res.status(404).json({ success: false, msg: 'Vehículo no encontrado' });
         }
 
-        const spotId = session[0].spot_id;
+        const vehicleSession = session[0];
+        const spotId = vehicleSession.spot_id;
+        
+        // ✅ RECALCULAR precio usando tarifa guardada del vehículo
+        const entryTime = new Date(vehicleSession.entry_time);
+        const exitTime = new Date();
+        const diffMs = exitTime - entryTime;
+        const totalTimeMinutes = Math.floor(diffMs / 60000);
+        
+        // Usar tarifa guardada al momento de entrada
+        const rateBase = vehicleSession.rate_base_at_entry || 5.00;
+        const rateMinute = vehicleSession.rate_minute_at_entry || 0.10;
+        
+        let calculatedCost = rateBase;
+        if (totalTimeMinutes > 60) {
+            calculatedCost += (totalTimeMinutes - 60) * rateMinute;
+        }
+        calculatedCost = parseFloat(calculatedCost.toFixed(2));
 
-        // Actualizar sesión
+        // Actualizar sesión con precio calculado usando tarifa guardada
         await db.query(`
             UPDATE parking_sessions 
             SET 
@@ -144,7 +165,7 @@ app.post('/api/vehicles/exit', async (req, res) => {
                 total_cost = ?,
                 total_time_minutes = ?
             WHERE plate = ? AND status = 'active'
-        `, [cost, totalTime, plate]);
+        `, [calculatedCost, totalTimeMinutes, plate]);
 
         // Liberar plaza en parking_spots
         await db.query(`
