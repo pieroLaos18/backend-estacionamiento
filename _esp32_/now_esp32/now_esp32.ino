@@ -27,23 +27,26 @@
 // ============================================
 // CONFIGURACIÓN DE HARDWARE
 // ============================================
-#define HARDWARE_COMPLETO 0  // 0 = Solo 1 plaza, 1 = 3 plazas completas
+#define HARDWARE_COMPLETO 1  // 0 = Solo 1 plaza, 1 = 3 plazas completas
 #define DETECCION_SALIDA_AUTO 1  // 1 = Detectar salida automáticamente, 0 = Solo por IR
 
 // ============================================
-// PINES
+// PINES - CONFIGURACIÓN MEJORADA PARA 3 SENSORES
 // ============================================
-#define TRIG_PIN_1 4
+// Sensores HC-SR04 - Separados para evitar interferencia
+#define TRIG_PIN_1 4   // Plaza 1
 #define ECHO_PIN_1 5
-#define TRIG_PIN_2 16
+#define TRIG_PIN_2 16  // Plaza 2  
 #define ECHO_PIN_2 17
-#define TRIG_PIN_3 18
+#define TRIG_PIN_3 18  // Plaza 3
 #define ECHO_PIN_3 19
 #define MAX_DISTANCE 200
 
+// Sensores IR
 #define IR_ENTRADA_PIN 15
 #define IR_SALIDA_PIN 14
 
+// Servomotores
 #define SERVO_ENTRADA_PIN 13
 #define SERVO_SALIDA_PIN 12
 
@@ -59,6 +62,8 @@
 #define TIEMPO_ESTABILIDAD_ENTRADA 5000  // 5 segundos para confirmar entrada
 #define TIEMPO_ESTABILIDAD_SALIDA 3000   // 3 segundos para confirmar salida
 #define DELAY_IR 2000  // 2 segundos de delay para IR
+#define DELAY_ENTRE_SENSORES 150  // 150ms entre lecturas de sensores
+#define DELAY_LOOP_PRINCIPAL 800  // 800ms delay principal
 
 // ============================================
 // MQTT HIVEMQ - CREDENCIALES DE RODRIGO
@@ -119,6 +124,14 @@ bool vehiculoEnIRAnterior = false;
 unsigned long tiempoDeteccionIR = 0;
 bool eventoIRPublicado = false;
 
+#if HARDWARE_COMPLETO
+// Variables para IR Salida
+bool vehiculoEnIRSalida = false;
+bool vehiculoEnIRSalidaAnterior = false;
+unsigned long tiempoDeteccionIRSalida = 0;
+bool eventoIRSalidaPublicado = false;
+#endif
+
 // ============================================
 // FUNCIONES DE CONTROL DE PUERTAS
 // ============================================
@@ -155,6 +168,31 @@ void cerrarSalida() {
 // ============================================
 // FUNCIÓN GENÉRICA DE DETECCIÓN DE PLAZA
 // ============================================
+
+/**
+ * @brief Obtiene múltiples lecturas del sensor para mayor estabilidad
+ * @param sensor Referencia al objeto NewPing
+ * @return Distancia promedio en cm
+ */
+unsigned int obtenerLecturaEstable(NewPing& sensor) {
+    const int NUM_LECTURAS = 3;
+    unsigned int lecturas[NUM_LECTURAS];
+    unsigned int suma = 0;
+    int lecturasValidas = 0;
+    
+    for (int i = 0; i < NUM_LECTURAS; i++) {
+        unsigned int lectura = sensor.ping_cm();
+        if (lectura == 0) lectura = MAX_DISTANCE;
+        lecturas[i] = lectura;
+        suma += lectura;
+        lecturasValidas++;
+        delay(50); // Pequeño delay entre lecturas múltiples
+    }
+    
+    // Retornar promedio de lecturas válidas
+    return (lecturasValidas > 0) ? (suma / lecturasValidas) : MAX_DISTANCE;
+}
+
 /**
  * @brief Procesa la lógica de estabilidad para una plaza
  * @param distancia Distancia medida por el sensor ultrasónico
@@ -425,19 +463,17 @@ void loop() {
   client.loop();
 
   // ==========================================
-  // DETECCIÓN DE VEHÍCULO EN IR (con delay)
+  // DETECCIÓN DE VEHÍCULO EN IR ENTRADA (con delay)
   // ==========================================
   int irEntrada = digitalRead(IR_ENTRADA_PIN);
   vehiculoEnIR = (irEntrada == LOW);
 
   if (vehiculoEnIR && !vehiculoEnIRAnterior) {
-    // Vehículo detectado, iniciar timer
     tiempoDeteccionIR = millis();
     eventoIRPublicado = false;
   }
 
   if (vehiculoEnIR && !eventoIRPublicado) {
-    // Verificar si han pasado 2 segundos
     if (millis() - tiempoDeteccionIR >= DELAY_IR) {
       Serial.println("🚗 Vehículo en entrada (IR confirmado)");
       
@@ -451,52 +487,90 @@ void loop() {
       
       eventoIRPublicado = true;
       
-      // Abrir puerta automáticamente si no está en modo manual
-      if (!modoManual && !entradaAbierta) {
-        abrirEntrada();
-      }
+      // NO abrir puerta automáticamente - esperar confirmación del frontend
+      // El frontend enviará comando "abrir_entrada" después de confirmar la placa
     }
   }
 
   if (!vehiculoEnIR) {
     eventoIRPublicado = false;
-    
-    // Cerrar puerta automáticamente si está abierta y no hay vehículo
+    // Cerrar entrada solo si está abierta y no hay vehículo
     if (!modoManual && entradaAbierta) {
       cerrarEntrada();
     }
   }
-
   vehiculoEnIRAnterior = vehiculoEnIR;
 
+#if HARDWARE_COMPLETO
   // ==========================================
-  // DETECCIÓN DE VEHÍCULOS ESTACIONADOS
+  // DETECCIÓN DE VEHÍCULO EN IR SALIDA
+  // ==========================================
+  int irSalida = digitalRead(IR_SALIDA_PIN);
+  vehiculoEnIRSalida = (irSalida == LOW);
+
+  if (vehiculoEnIRSalida && !vehiculoEnIRSalidaAnterior) {
+    tiempoDeteccionIRSalida = millis();
+    eventoIRSalidaPublicado = false;
+  }
+
+  if (vehiculoEnIRSalida && !eventoIRSalidaPublicado) {
+    if (millis() - tiempoDeteccionIRSalida >= DELAY_IR) {
+      Serial.println("🚗 Vehículo en salida (IR confirmado)");
+      
+      // SOLO PUBLICAR EVENTO - NO ABRIR PUERTA
+      StaticJsonDocument<100> doc;
+      doc["evento"] = "salida_detectada";
+      doc["timestamp"] = millis();
+      
+      char jsonBuffer[100];
+      serializeJson(doc, jsonBuffer);
+      client.publish("estacionamiento/eventos/salida_detectada", jsonBuffer);
+      
+      eventoIRSalidaPublicado = true;
+    }
+  }
+  
+  // Cerrar puerta salida automáticamente si ya pasó el vehículo
+  if (!vehiculoEnIRSalida) {
+    eventoIRSalidaPublicado = false;
+    if (!modoManual && salidaAbierta) {
+      cerrarSalida();
+    }
+  }
+  vehiculoEnIRSalidaAnterior = vehiculoEnIRSalida;
+#endif
+
+  // ==========================================
+  // DETECCIÓN DE VEHÍCULOS ESTACIONADOS (CON DELAYS SECUENCIALES)
   // ==========================================
   
   // Plaza 1: Leer sensor y procesar con lógica de estabilidad
-  unsigned int distancia1 = sonar1.ping_cm();
-  if (distancia1 == 0) distancia1 = MAX_DISTANCE;
+  unsigned int distancia1 = obtenerLecturaEstable(sonar1);
   
   bool ocupado1 = procesarDeteccionPlaza(
       distancia1, 1,
       tiempoEstable1, tiempoDeteccionSalida1,
       distanciaAnterior1, vehiculoEstacionadoConfirmado1
   );
+  
+  // DELAY para evitar interferencia entre sensores
+  delay(DELAY_ENTRE_SENSORES);
 
 #if HARDWARE_COMPLETO
   // Plaza 2: Leer sensor y procesar con lógica de estabilidad
-  unsigned int distancia2 = sonar2.ping_cm();
-  if (distancia2 == 0) distancia2 = MAX_DISTANCE;
+  unsigned int distancia2 = obtenerLecturaEstable(sonar2);
   
   bool ocupado2 = procesarDeteccionPlaza(
       distancia2, 2,
       tiempoEstable2, tiempoDeteccionSalida2,
       distanciaAnterior2, vehiculoEstacionadoConfirmado2
   );
+  
+  // DELAY para evitar interferencia entre sensores
+  delay(DELAY_ENTRE_SENSORES);
 
   // Plaza 3: Leer sensor y procesar con lógica de estabilidad
-  unsigned int distancia3 = sonar3.ping_cm();
-  if (distancia3 == 0) distancia3 = MAX_DISTANCE;
+  unsigned int distancia3 = obtenerLecturaEstable(sonar3);
   
   bool ocupado3 = procesarDeteccionPlaza(
       distancia3, 3,
@@ -547,5 +621,5 @@ void loop() {
                 vehiculoEnIR ? "Detectado" : "Libre");
 #endif
 
-  delay(500);
+  delay(DELAY_LOOP_PRINCIPAL);
 }

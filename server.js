@@ -74,7 +74,7 @@ app.get('/api/vehicles/active', async (req, res) => {
 
 // Registrar entrada (desde sensor/manual)
 app.post('/api/vehicles/entry', async (req, res) => {
-    const { plate, spotId } = req.body;
+    const { plate, spotId, entryTime } = req.body;
     try {
         // Verificar si ya existe activo en esa plaza
         const [existing] = await db.query('SELECT id FROM parking_sessions WHERE spot_id = ? AND status = "active"', [spotId]);
@@ -82,8 +82,22 @@ app.post('/api/vehicles/entry', async (req, res) => {
             return res.status(400).json({ success: false, msg: 'Plaza ocupada' });
         }
 
-        // Insertar sesión en parking_sessions
-        await db.query('INSERT INTO parking_sessions (plate, spot_id, status) VALUES (?, ?, "active")', [plate, spotId]);
+        // Usar entryTime proporcionado o CURRENT_TIMESTAMP
+        const actualEntryTime = entryTime ? new Date(entryTime) : null;
+
+        if (actualEntryTime) {
+            // Insertar con entry_time específico
+            await db.query(
+                'INSERT INTO parking_sessions (plate, spot_id, entry_time, status) VALUES (?, ?, ?, "active")',
+                [plate, spotId, actualEntryTime]
+            );
+        } else {
+            // Insertar con CURRENT_TIMESTAMP (default)
+            await db.query(
+                'INSERT INTO parking_sessions (plate, spot_id, status) VALUES (?, ?, "active")',
+                [plate, spotId]
+            );
+        }
 
         // Actualizar tabla parking_spots
         await db.query(`
