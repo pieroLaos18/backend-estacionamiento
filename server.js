@@ -125,20 +125,26 @@ app.post('/api/vehicles/entry', async (req, res) => {
 // Registrar salida (pago)
 app.post('/api/vehicles/exit', async (req, res) => {
     const { plate } = req.body;
+    console.log('🚗 Procesando salida para placa:', plate);
+    
     try {
         // Obtener sesión completa con tarifa guardada
+        console.log('📊 Buscando sesión activa...');
         const [session] = await db.query(`
             SELECT spot_id, entry_time, rate_base_at_entry, rate_minute_at_entry 
             FROM parking_sessions 
             WHERE plate = ? AND status = "active"
         `, [plate]);
 
+        console.log('📋 Sesiones encontradas:', session.length);
         if (session.length === 0) {
+            console.log('❌ No se encontró vehículo activo');
             return res.status(404).json({ success: false, msg: 'Vehículo no encontrado' });
         }
 
         const vehicleSession = session[0];
         const spotId = vehicleSession.spot_id;
+        console.log('📍 Plaza:', spotId, '| Entrada:', vehicleSession.entry_time);
         
         // ✅ RECALCULAR precio usando tarifa guardada del vehículo
         const entryTime = new Date(vehicleSession.entry_time);
@@ -147,16 +153,19 @@ app.post('/api/vehicles/exit', async (req, res) => {
         const totalTimeMinutes = Math.floor(diffMs / 60000);
         
         // Usar tarifa guardada al momento de entrada
-        const rateBase = vehicleSession.rate_base_at_entry || 5.00;
-        const rateMinute = vehicleSession.rate_minute_at_entry || 0.10;
+        const rateBase = parseFloat(vehicleSession.rate_base_at_entry) || 5.00;
+        const rateMinute = parseFloat(vehicleSession.rate_minute_at_entry) || 0.10;
+        console.log('💰 Tarifas:', { rateBase, rateMinute, totalTimeMinutes });
         
         let calculatedCost = rateBase;
         if (totalTimeMinutes > 60) {
             calculatedCost += (totalTimeMinutes - 60) * rateMinute;
         }
         calculatedCost = parseFloat(calculatedCost.toFixed(2));
+        console.log('💲 Costo calculado:', calculatedCost);
 
         // Actualizar sesión con precio calculado usando tarifa guardada
+        console.log('🔄 Actualizando sesión...');
         await db.query(`
             UPDATE parking_sessions 
             SET 
@@ -168,6 +177,7 @@ app.post('/api/vehicles/exit', async (req, res) => {
         `, [calculatedCost, totalTimeMinutes, plate]);
 
         // Liberar plaza en parking_spots
+        console.log('🅿️ Liberando plaza...');
         await db.query(`
             UPDATE parking_spots 
             SET is_occupied = FALSE, 
@@ -176,10 +186,11 @@ app.post('/api/vehicles/exit', async (req, res) => {
             WHERE id = ?
         `, [spotId]);
 
+        console.log('✅ Salida procesada exitosamente');
         res.json({ success: true, msg: 'Salida registrada y pagada' });
     } catch (error) {
-        console.error('Error registering exit:', error);
-        res.status(500).json({ error: 'Error registrando salida' });
+        console.error('❌ Error registering exit:', error);
+        res.status(500).json({ success: false, msg: 'Error registrando salida', error: error.message });
     }
 });
 
