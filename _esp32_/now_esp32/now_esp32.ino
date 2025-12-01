@@ -140,6 +140,9 @@ void abrirEntrada() {
   puertaEntrada.write(SERVO_ANGULO_ABIERTO);
   entradaAbierta = true;
   Serial.println("✅ Entrada abierta");
+  
+  // Publicar estado de puerta
+  client.publish("estacionamiento/puerta/entrada/estado", "abierta");
 }
 
 void cerrarEntrada() {
@@ -147,6 +150,9 @@ void cerrarEntrada() {
   puertaEntrada.write(SERVO_ANGULO_CERRADO);
   entradaAbierta = false;
   Serial.println("✅ Entrada cerrada");
+  
+  // Publicar estado de puerta
+  client.publish("estacionamiento/puerta/entrada/estado", "cerrada");
 }
 
 #if HARDWARE_COMPLETO
@@ -155,6 +161,9 @@ void abrirSalida() {
   puertaSalida.write(SERVO_ANGULO_ABIERTO);
   salidaAbierta = true;
   Serial.println("✅ Salida abierta");
+  
+  // Publicar estado de puerta
+  client.publish("estacionamiento/puerta/salida/estado", "abierta");
 }
 
 void cerrarSalida() {
@@ -162,6 +171,9 @@ void cerrarSalida() {
   puertaSalida.write(SERVO_ANGULO_CERRADO);
   salidaAbierta = false;
   Serial.println("✅ Salida cerrada");
+  
+  // Publicar estado de puerta
+  client.publish("estacionamiento/puerta/salida/estado", "cerrada");
 }
 #endif
 
@@ -371,18 +383,24 @@ void callback(char* topic, byte* message, unsigned int length) {
 
   // Control de puertas
   if (String(topic) == "estacionamiento/puerta/control") {
+    Serial.println("🎮 Comando de control de puerta recibido: " + payload);
+    
     if (payload == "abrirEntrada") {
+      Serial.println("🚪 Ejecutando: abrirEntrada");
       abrirEntrada();
       modoManual = true;
     } else if (payload == "cerrarEntrada") {
+      Serial.println("🚪 Ejecutando: cerrarEntrada");
       cerrarEntrada();
       modoManual = true;
     }
 #if HARDWARE_COMPLETO
     else if (payload == "abrirSalida") {
+      Serial.println("🚪 Ejecutando: abrirSalida");
       abrirSalida();
       modoManual = true;
     } else if (payload == "cerrarSalida") {
+      Serial.println("🚪 Ejecutando: cerrarSalida");
       cerrarSalida();
       modoManual = true;
     }
@@ -393,6 +411,8 @@ void callback(char* topic, byte* message, unsigned int length) {
     } else if (payload == "manual") {
       modoManual = true;
       Serial.println("👤 Modo manual activado");
+    } else {
+      Serial.println("❌ Comando desconocido: " + payload);
     }
   }
 }
