@@ -61,7 +61,9 @@ app.get('/api/vehicles/active', async (req, res) => {
                 plate, 
                 spot_id as spotId, 
                 UNIX_TIMESTAMP(entry_time) * 1000 as entryTime,
-                UNIX_TIMESTAMP(exit_time) * 1000 as exitTime
+                UNIX_TIMESTAMP(exit_time) * 1000 as exitTime,
+                rate_base_at_entry as rateBaseAtEntry,
+                rate_minute_at_entry as rateMinuteAtEntry
             FROM parking_sessions 
             WHERE status = 'active'
         `);
@@ -85,17 +87,22 @@ app.post('/api/vehicles/entry', async (req, res) => {
         // Usar entryTime proporcionado o CURRENT_TIMESTAMP
         const actualEntryTime = entryTime ? new Date(entryTime) : null;
 
+        // Obtener tarifa actual al momento de entrada
+        const [currentRates] = await db.query('SELECT * FROM rates WHERE is_active = TRUE ORDER BY id DESC LIMIT 1');
+        const rateBase = currentRates[0]?.base_cost || 5.00;
+        const rateMinute = currentRates[0]?.minute_cost || 0.10;
+
         if (actualEntryTime) {
-            // Insertar con entry_time específico
+            // Insertar con entry_time específico + tarifa
             await db.query(
-                'INSERT INTO parking_sessions (plate, spot_id, entry_time, status) VALUES (?, ?, ?, "active")',
-                [plate, spotId, actualEntryTime]
+                'INSERT INTO parking_sessions (plate, spot_id, entry_time, rate_base_at_entry, rate_minute_at_entry, status) VALUES (?, ?, ?, ?, ?, "active")',
+                [plate, spotId, actualEntryTime, rateBase, rateMinute]
             );
         } else {
-            // Insertar con CURRENT_TIMESTAMP (default)
+            // Insertar con CURRENT_TIMESTAMP + tarifa
             await db.query(
-                'INSERT INTO parking_sessions (plate, spot_id, status) VALUES (?, ?, "active")',
-                [plate, spotId]
+                'INSERT INTO parking_sessions (plate, spot_id, rate_base_at_entry, rate_minute_at_entry, status) VALUES (?, ?, ?, ?, "active")',
+                [plate, spotId, rateBase, rateMinute]
             );
         }
 
